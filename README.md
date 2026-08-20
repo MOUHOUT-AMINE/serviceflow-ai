@@ -27,3 +27,31 @@ Advanced permissions, notifications, attachments, and real-time updates are inte
 6. Add dashboard summaries, filtering, seed data, and CI checks.
 7. Polish documentation and the demonstration environment.
 
+## Backend database
+
+Start the development PostgreSQL service from the repository root:
+
+```sh
+docker compose up -d postgres
+```
+
+Install backend dependencies and apply migrations from `backend`:
+
+```sh
+python -m pip install -r requirements.txt
+alembic upgrade head
+```
+
+Create a migration after changing SQLAlchemy models with:
+
+```sh
+alembic revision --autogenerate -m "describe change"
+```
+
+Run backend tests against the isolated, temporary PostgreSQL service:
+
+```sh
+docker compose --profile test up -d postgres-test
+cd backend
+pytest
+```

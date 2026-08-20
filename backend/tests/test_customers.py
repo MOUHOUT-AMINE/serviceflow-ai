@@ -2,18 +2,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.customers.repository import CustomerRepository, customer_repository
+from app.customers.repository import CustomerRepository
 from app.customers.schemas import CustomerCreate, CustomerUpdate
 from app.main import app
 
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def reset_customer_repository() -> None:
-    customer_repository.clear()
 
 
 def test_customer_crud_flow() -> None:
@@ -69,20 +65,24 @@ def test_update_rejects_null_fields() -> None:
     assert client.patch("/customers/1", json={"email": None}).status_code == 422
 
 
-def test_concurrent_creates_keep_unique_ids_and_all_customers() -> None:
-    repository = CustomerRepository()
-
+def test_concurrent_creates_keep_unique_ids_and_all_customers(
+    session_factory: sessionmaker[Session], db_session: Session
+) -> None:
     def create_customer(number: int) -> int:
-        customer = repository.create(
-            CustomerCreate(name=f"Customer {number}", email=f"user{number}@example.com")
-        )
-        return customer.id
+        with session_factory() as session:
+            repository = CustomerRepository(session)
+            customer = repository.create(
+                CustomerCreate(
+                    name=f"Customer {number}", email=f"user{number}@example.com"
+                )
+            )
+            return customer.id
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         ids = list(executor.map(create_customer, range(100)))
 
     assert len(ids) == len(set(ids)) == 100
-    assert len(repository.list()) == 100
+    assert len(CustomerRepository(db_session).list()) == 100
 
 
 def test_update_returns_404_when_customer_is_deleted_before_update(
@@ -91,12 +91,12 @@ def test_update_returns_404_when_customer_is_deleted_before_update(
     client.post("/customers", json={"name": "Ada", "email": "ada@example.com"})
 
     def delete_before_update(
-        customer_id: int, data: CustomerUpdate
+        repository: CustomerRepository, customer_id: int, data: CustomerUpdate
     ) -> None:
-        customer_repository.delete(customer_id)
+        repository.delete(customer_id)
         return None
 
-    monkeypatch.setattr(customer_repository, "update", delete_before_update)
+    monkeypatch.setattr(CustomerRepository, "update", delete_before_update)
 
     response = client.patch("/customers/1", json={"name": "Ada Byron"})
 

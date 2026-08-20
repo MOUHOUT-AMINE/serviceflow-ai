@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 
 CustomerName = Annotated[
@@ -19,4 +19,6 @@ class CustomerUpdate(BaseModel):
 
 
 class Customer(CustomerCreate):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
