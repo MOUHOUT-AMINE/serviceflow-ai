@@ -4,12 +4,24 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.auth.models import UserRole
+from app.auth.repository import UserRepository
+from app.auth.schemas import UserCreate
+from app.auth.security import create_access_token
 from app.customers.repository import CustomerRepository
 from app.customers.schemas import CustomerCreate, CustomerUpdate
 from app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def authenticate_as_admin(db_session: Session) -> None:
+    user = UserRepository(db_session).create(
+        UserCreate(email="admin@example.com", password="strong-password", role=UserRole.ADMIN)
+    )
+    client.headers["Authorization"] = f"Bearer {create_access_token(user.id, user.role.value)}"
 
 
 def test_customer_crud_flow() -> None:

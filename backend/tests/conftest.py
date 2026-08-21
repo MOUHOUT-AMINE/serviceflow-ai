@@ -20,6 +20,8 @@ if not (make_url(TEST_DATABASE_URL).database or "").endswith("_test"):
 
 # This must be set before the application database module is imported by tests.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-32-characters")
+os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
 
 @pytest.fixture(scope="session")
@@ -36,10 +38,10 @@ def test_engine() -> Generator[Engine, None, None]:
 @pytest.fixture(autouse=True)
 def clean_database(test_engine: Engine) -> Generator[None, None, None]:
     with test_engine.begin() as connection:
-        connection.execute(text("TRUNCATE TABLE customers RESTART IDENTITY"))
+        connection.execute(text("TRUNCATE TABLE customers, users RESTART IDENTITY"))
     yield
     with test_engine.begin() as connection:
-        connection.execute(text("TRUNCATE TABLE customers RESTART IDENTITY"))
+        connection.execute(text("TRUNCATE TABLE customers, users RESTART IDENTITY"))
 
 
 @pytest.fixture

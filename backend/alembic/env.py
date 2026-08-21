@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import get_database_url
 from app.database import Base
+from app.auth import models as auth_models  # noqa: F401
 from app.customers import models  # noqa: F401
 
 

@@ -42,6 +42,17 @@ python -m pip install -r requirements.txt
 alembic upgrade head
 ```
 
+Configure `JWT_SECRET_KEY`, then create the first administrator after migrating:
+
+```sh
+python -m app.auth.bootstrap
+```
+
+The command reads `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` and is
+safe to rerun when that email already exists. Log in through `POST /auth/login`
+using OAuth2 form fields `username` (the email address) and `password`, then send
+the returned token as `Authorization: Bearer <token>`.
+
 Create a migration after changing SQLAlchemy models with:
 
 ```sh

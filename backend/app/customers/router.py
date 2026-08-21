@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import AdminUser, AuthenticatedUser
 from app.database import get_db
 
 from .repository import CustomerRepository
@@ -25,6 +26,7 @@ def _get_customer_or_404(
 @router.post("", response_model=Customer, status_code=status.HTTP_201_CREATED)
 def create_customer(
     data: CustomerCreate,
+    _: AuthenticatedUser,
     repository: CustomerRepository = Depends(get_customer_repository),
 ) -> Customer:
     return repository.create(data)
@@ -32,6 +34,7 @@ def create_customer(
 
 @router.get("", response_model=list[Customer])
 def list_customers(
+    _: AuthenticatedUser,
     repository: CustomerRepository = Depends(get_customer_repository),
 ) -> list[Customer]:
     return repository.list()
@@ -40,6 +43,7 @@ def list_customers(
 @router.get("/{customer_id}", response_model=Customer)
 def get_customer(
     customer_id: int,
+    _: AuthenticatedUser,
     repository: CustomerRepository = Depends(get_customer_repository),
 ) -> Customer:
     return _get_customer_or_404(customer_id, repository)
@@ -49,6 +53,7 @@ def get_customer(
 def update_customer(
     customer_id: int,
     data: CustomerUpdate,
+    _: AuthenticatedUser,
     repository: CustomerRepository = Depends(get_customer_repository),
 ) -> Customer:
     customer = repository.update(customer_id, data)
@@ -60,6 +65,7 @@ def update_customer(
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_customer(
     customer_id: int,
+    _: AdminUser,
     repository: CustomerRepository = Depends(get_customer_repository),
 ) -> Response:
     if not repository.delete(customer_id):
