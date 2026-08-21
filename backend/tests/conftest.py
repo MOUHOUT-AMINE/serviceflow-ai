@@ -38,10 +38,14 @@ def test_engine() -> Generator[Engine, None, None]:
 @pytest.fixture(autouse=True)
 def clean_database(test_engine: Engine) -> Generator[None, None, None]:
     with test_engine.begin() as connection:
-        connection.execute(text("TRUNCATE TABLE customers, users RESTART IDENTITY"))
+        connection.execute(
+            text("TRUNCATE TABLE service_requests, customers, users RESTART IDENTITY")
+        )
     yield
     with test_engine.begin() as connection:
-        connection.execute(text("TRUNCATE TABLE customers, users RESTART IDENTITY"))
+        connection.execute(
+            text("TRUNCATE TABLE service_requests, customers, users RESTART IDENTITY")
+        )
 
 
 @pytest.fixture

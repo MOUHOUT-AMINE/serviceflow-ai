@@ -7,6 +7,7 @@ from app.config import get_database_url
 from app.database import Base
 from app.auth import models as auth_models  # noqa: F401
 from app.customers import models  # noqa: F401
+from app.service_requests import models as service_request_models  # noqa: F401
 
 
 config = context.config
