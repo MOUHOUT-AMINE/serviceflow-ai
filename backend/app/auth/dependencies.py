@@ -56,3 +56,4 @@ AuthenticatedUser = Annotated[
     UserModel, Depends(require_roles(UserRole.ADMIN, UserRole.AGENT))
 ]
 AdminUser = Annotated[UserModel, Depends(require_roles(UserRole.ADMIN))]
+AgentUser = Annotated[UserModel, Depends(require_roles(UserRole.AGENT))]
