@@ -26,3 +26,8 @@ def get_access_token_expire_minutes() -> int:
     if value <= 0:
         raise RuntimeError("JWT_ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
     return value
+
+
+def get_cors_origins() -> list[str]:
+    value = os.getenv("CORS_ORIGINS", "http://localhost:5173")
+    return [origin.strip() for origin in value.split(",") if origin.strip()]

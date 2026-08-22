@@ -47,6 +47,7 @@ class ServiceRequest(BaseModel):
     priority: ServiceRequestPriority
     customer_id: int
     assigned_agent_id: int | None
+    assigned_agent_email: str | None
     created_by_user_id: int
     created_at: datetime
     updated_at: datetime

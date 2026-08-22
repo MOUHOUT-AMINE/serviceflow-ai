@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .models import ServiceRequestModel, ServiceRequestPriority, ServiceRequestStatus
 from .schemas import ServiceRequestCreate, ServiceRequestUpdate
@@ -27,7 +27,9 @@ class ServiceRequestRepository:
         status: ServiceRequestStatus | None = None,
         priority: ServiceRequestPriority | None = None,
     ) -> list[ServiceRequestModel]:
-        statement = select(ServiceRequestModel)
+        statement = select(ServiceRequestModel).options(
+            selectinload(ServiceRequestModel.assigned_agent)
+        )
         if customer_id is not None:
             statement = statement.where(ServiceRequestModel.customer_id == customer_id)
         if assigned_agent_id is not None:

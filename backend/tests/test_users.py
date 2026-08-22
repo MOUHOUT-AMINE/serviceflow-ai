@@ -58,6 +58,40 @@ def test_duplicate_email_is_rejected_case_insensitively(db_session: Session) -> 
     assert response.status_code == 409
 
 
+def test_admin_cannot_demote_self(db_session: Session) -> None:
+    admin = create_user(db_session, "admin@example.com", UserRole.ADMIN)
+
+    response = client.patch(
+        f"/users/{admin.id}",
+        json={"role": "agent"},
+        headers=headers_for(admin),
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Administrators cannot demote their own account"
+    }
+    db_session.refresh(admin)
+    assert admin.role == UserRole.ADMIN
+
+
+def test_admin_cannot_deactivate_self(db_session: Session) -> None:
+    admin = create_user(db_session, "admin@example.com", UserRole.ADMIN)
+
+    response = client.patch(
+        f"/users/{admin.id}",
+        json={"is_active": False},
+        headers=headers_for(admin),
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Administrators cannot deactivate their own account"
+    }
+    db_session.refresh(admin)
+    assert admin.is_active is True
+
+
 def test_agent_cannot_manage_users(db_session: Session) -> None:
     agent = create_user(db_session, "agent@example.com", UserRole.AGENT)
     headers = headers_for(agent)

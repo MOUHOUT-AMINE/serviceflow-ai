@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AdminUser
+from app.auth.models import UserRole
 from app.auth.repository import UserRepository
 from app.auth.schemas import User, UserCreate, UserUpdate
 from app.database import get_db
@@ -54,9 +55,19 @@ def get_user(
 def update_user(
     user_id: int,
     data: UserUpdate,
-    _: AdminUser,
+    current_user: AdminUser,
     repository: Annotated[UserRepository, Depends(get_user_repository)],
 ) -> User:
+    if user_id == current_user.id and data.role == UserRole.AGENT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrators cannot demote their own account",
+        )
+    if user_id == current_user.id and data.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrators cannot deactivate their own account",
+        )
     user = repository.update(user_id, data)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")

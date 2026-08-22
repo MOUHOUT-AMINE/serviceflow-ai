@@ -79,6 +79,10 @@ class ServiceRequestModel(Base):
         back_populates="created_service_requests", foreign_keys=[created_by_user_id]
     )
 
+    @property
+    def assigned_agent_email(self) -> str | None:
+        return self.assigned_agent.email if self.assigned_agent is not None else None
+
 
 from app.auth.models import UserModel  # noqa: E402
 from app.customers.models import CustomerModel  # noqa: E402

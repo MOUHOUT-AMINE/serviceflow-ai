@@ -2,9 +2,10 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import NO_VALUE
 
 from app.auth.models import UserModel, UserRole
 from app.auth.repository import UserRepository
@@ -15,6 +16,7 @@ from app.customers.repository import CustomerRepository
 from app.customers.schemas import CustomerCreate
 from app.main import app
 from app.service_requests.models import ServiceRequestModel
+from app.service_requests.repository import ServiceRequestRepository
 
 
 client = TestClient(app)
@@ -188,12 +190,71 @@ def test_assignment_reassignment_and_unassignment(db_session: Session) -> None:
         )
         assert response.status_code == 200
         assert response.json()["assigned_agent_id"] == agent_id
+        assert response.json()["assigned_agent_email"] == (
+            None if agent_id is None else db_session.get(UserModel, agent_id).email
+        )
 
     assert client.patch(
         f"/service-requests/{request_id}",
         json={"assigned_agent_id": first.id},
         headers=headers,
     ).status_code == 422
+
+
+def test_agent_receives_safe_assignee_identity_without_users_access(
+    db_session: Session,
+) -> None:
+    admin = create_user(db_session, "admin@example.com", UserRole.ADMIN)
+    assignee = create_user(db_session, "assigned@example.com")
+    viewer = create_user(db_session, "viewer@example.com")
+    customer = create_customer(db_session)
+    request_id = client.post(
+        "/service-requests",
+        json=request_payload(customer.id),
+        headers=headers_for(admin),
+    ).json()["id"]
+    client.patch(
+        f"/service-requests/{request_id}/assignment",
+        json={"assigned_agent_id": assignee.id},
+        headers=headers_for(admin),
+    )
+
+    response = client.get(
+        f"/service-requests/{request_id}", headers=headers_for(viewer)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["assigned_agent_id"] == assignee.id
+    assert response.json()["assigned_agent_email"] == "assigned@example.com"
+    assert client.get("/users", headers=headers_for(viewer)).status_code == 403
+
+
+def test_list_eager_loads_assigned_agents(db_session: Session) -> None:
+    creator = create_user(db_session, "admin@example.com", UserRole.ADMIN)
+    assignee = create_user(db_session, "assigned@example.com")
+    customer = create_customer(db_session)
+    db_session.add_all(
+        [
+            ServiceRequestModel(
+                title=f"Request {number}",
+                description="Description",
+                customer_id=customer.id,
+                created_by_user_id=creator.id,
+                assigned_agent_id=assignee.id,
+            )
+            for number in range(2)
+        ]
+    )
+    db_session.commit()
+    db_session.expire_all()
+
+    requests = ServiceRequestRepository(db_session).list()
+
+    assert len(requests) == 2
+    assert all(
+        inspect(request).attrs.assigned_agent.loaded_value is not NO_VALUE
+        for request in requests
+    )
 
 
 def test_assignment_rejects_invalid_targets(db_session: Session) -> None:
