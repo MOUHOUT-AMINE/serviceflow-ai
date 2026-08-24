@@ -27,7 +27,59 @@ Advanced permissions, notifications, attachments, and real-time updates are inte
 6. Add dashboard summaries, filtering, seed data, and CI checks.
 7. Polish documentation and the demonstration environment.
 
-## Backend database
+## Run the full application with Docker
+
+Copy `.env.example` to `.env` and replace `POSTGRES_PASSWORD`,
+`JWT_SECRET_KEY`, and `BOOTSTRAP_ADMIN_PASSWORD` with local values. Then run:
+
+```sh
+docker compose up --build
+```
+
+The backend builds its PostgreSQL URL from the separate `POSTGRES_*` settings,
+so `POSTGRES_PASSWORD` may contain URL-reserved characters such as `@`, `:`,
+`/`, `?`, `#`, and `%`. When the backend runs on the host it connects to
+`DATABASE_HOST=localhost`; Compose overrides that host to the `postgres` service.
+`DATABASE_URL` remains available as an optional full override, but credentials in
+that value must already be percent-encoded.
+
+Open the frontend at http://localhost:5173. The API and its interactive docs are
+also exposed at http://localhost:8000 and http://localhost:8000/docs.
+
+The backend waits for PostgreSQL to become healthy, then runs `alembic upgrade
+head` before starting Uvicorn. Consequently, all committed database migrations
+are applied automatically on every container start. To create the initial admin
+after startup, run:
+
+```sh
+docker compose exec backend python -m app.auth.bootstrap
+```
+
+The frontend is built as static assets and served by Nginx. Requests under
+`/api` are proxied over the private Compose network to the backend, avoiding a
+browser-visible container hostname.
+
+### Changing the local PostgreSQL password
+
+PostgreSQL uses `POSTGRES_PASSWORD` only when it initializes a new data
+directory. Changing the value in `.env` does **not** change the password stored
+in an existing `postgres_data` volume, and the backend will fail authentication
+until the stored password and `.env` agree.
+
+For disposable local development data, stop the stack and recreate its volumes:
+
+```sh
+docker compose down -v
+docker compose up --build
+```
+
+`docker compose down -v` permanently deletes the local PostgreSQL volume and all
+data in it. Use this reset only when that development data is safe to discard;
+it is not an automatic upgrade step. To preserve local data, change the role's
+password inside PostgreSQL before updating `.env` (or back up the data first),
+then restart the stack with `docker compose up --build`.
+
+## Run services individually
 
 Start the development PostgreSQL service from the repository root:
 

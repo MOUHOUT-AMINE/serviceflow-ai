@@ -1,13 +1,21 @@
 import os
 
-
-DEFAULT_DATABASE_URL = (
-    "postgresql+psycopg://serviceflow:serviceflow@localhost:5432/serviceflow"
-)
+from sqlalchemy import URL
 
 
 def get_database_url() -> str:
-    return os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    return URL.create(
+        drivername="postgresql+psycopg",
+        username=os.getenv("POSTGRES_USER", "serviceflow"),
+        password=os.getenv("POSTGRES_PASSWORD", "serviceflow"),
+        host=os.getenv("DATABASE_HOST", "localhost"),
+        port=int(os.getenv("DATABASE_PORT", "5432")),
+        database=os.getenv("POSTGRES_DB", "serviceflow"),
+    ).render_as_string(hide_password=False)
 
 
 def get_jwt_secret_key() -> str:
