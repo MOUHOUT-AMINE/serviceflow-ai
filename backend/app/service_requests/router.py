@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import AdminUser, AuthenticatedUser
 from app.auth.models import UserRole
 from app.auth.repository import UserRepository
+from app.ai.dependencies import TicketAssistantDependency
+from app.ai.schemas import TicketSuggestions
+from app.ai.service import TicketAssistantError
 from app.customers.repository import CustomerRepository
 from app.database import get_db
 
@@ -20,6 +23,7 @@ from .schemas import (
 
 
 router = APIRouter(prefix="/service-requests", tags=["service-requests"])
+AI_UNAVAILABLE_DETAIL = "AI suggestions are temporarily unavailable"
 
 
 def get_service_request_repository(
@@ -72,6 +76,27 @@ def get_service_request(
     if request is None:
         raise HTTPException(status_code=404, detail="Service request not found")
     return request
+
+
+@router.post("/{request_id}/ai-suggestions", response_model=TicketSuggestions)
+def generate_ai_suggestions(
+    request_id: int,
+    _: AuthenticatedUser,
+    repository: Annotated[
+        ServiceRequestRepository, Depends(get_service_request_repository)
+    ],
+    assistant: TicketAssistantDependency,
+) -> TicketSuggestions:
+    request = repository.get(request_id)
+    if request is None:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    try:
+        return assistant.suggest(title=request.title, description=request.description)
+    except (TicketAssistantError, TimeoutError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=AI_UNAVAILABLE_DETAIL,
+        ) from None
 
 
 @router.patch("/{request_id}", response_model=ServiceRequest)

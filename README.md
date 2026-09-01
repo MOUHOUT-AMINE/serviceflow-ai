@@ -46,6 +46,20 @@ that value must already be percent-encoded.
 Open the frontend at http://localhost:5173. The API and its interactive docs are
 also exposed at http://localhost:8000 and http://localhost:8000/docs.
 
+### Optional AI ticket assistant
+
+AI suggestions are disabled by default, and no API key is required to start or
+use ServiceFlow. To enable the OpenAI provider, set `AI_PROVIDER=openai`,
+`AI_API_KEY`, and `AI_MODEL`; `AI_TIMEOUT_SECONDS` controls the provider request
+timeout (15 seconds by default). Compose passes these settings only to the
+backend. The API key is never included in frontend configuration or responses.
+
+Authenticated users can generate a non-persistent summary, suggested priority,
+and recommended action from a ticket's stored title and description. Suggestions
+are always presented for review and never change the ticket automatically. When
+AI is disabled, misconfigured, or temporarily unavailable, the rest of the
+ticket workflow remains operational.
+
 The backend waits for PostgreSQL to become healthy, then runs `alembic upgrade
 head` before starting Uvicorn. Consequently, all committed database migrations
 are applied automatically on every container start. To create the initial admin

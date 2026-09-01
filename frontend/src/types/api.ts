@@ -27,6 +27,12 @@ export interface ServiceRequest {
   updated_at: string
 }
 
+export interface TicketSuggestions {
+  summary: string
+  suggested_priority: RequestPriority
+  recommended_action: string
+}
+
 export interface DashboardCounts {
   total_service_requests?: number
   total_assigned_service_requests?: number

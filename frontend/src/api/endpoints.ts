@@ -1,5 +1,5 @@
 import { api, apiRequest } from './client'
-import type { AgentWorkSummary, Customer, DashboardOverview, RequestPriority, RequestStatus, ServiceRequest, User, UserRole } from '../types/api'
+import type { AgentWorkSummary, Customer, DashboardOverview, RequestPriority, RequestStatus, ServiceRequest, TicketSuggestions, User, UserRole } from '../types/api'
 
 export async function login(email: string, password: string) {
   const body = new URLSearchParams({ username: email, password })
@@ -27,6 +27,7 @@ export const requestsApi = {
   update: (id: number, data: Partial<Omit<RequestInput, 'customer_id'>>) => api.patch<ServiceRequest>(`/service-requests/${id}`, data),
   assign: (id: number, assigned_agent_id: number | null) => api.patch<ServiceRequest>(`/service-requests/${id}/assignment`, { assigned_agent_id }),
   remove: (id: number) => api.delete(`/service-requests/${id}`),
+  suggestions: (id: number) => api.post<TicketSuggestions>(`/service-requests/${id}/ai-suggestions`, undefined),
 }
 
 export const usersApi = {

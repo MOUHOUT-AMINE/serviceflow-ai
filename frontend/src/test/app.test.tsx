@@ -97,3 +97,100 @@ describe('role workflows', () => {
     await waitFor(() => expect(updated).toMatchObject({ status: 'resolved' }))
   })
 })
+
+describe('AI ticket suggestions', () => {
+  it('shows loading and renders suggestions for review', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    let release: (() => void) | undefined
+    server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
+      await new Promise<void>((resolve) => { release = resolve })
+      return HttpResponse.json({ summary: 'The printer is unreachable.', suggested_priority: 'high', recommended_action: 'Check power and network connectivity.' })
+    }))
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(screen.getByRole('button', { name: 'Generating…' })).toBeDisabled()
+    release?.()
+    expect(await screen.findByText('The printer is unreachable.')).toBeVisible()
+    expect(screen.getByText('Check power and network connectivity.')).toBeVisible()
+    expect(screen.getByText('AI-generated · Review before applying')).toBeVisible()
+    expect(within(screen.getByRole('dialog')).getByText('High')).toBeVisible()
+  })
+
+  it('shows a small fallback when AI is unavailable', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.json({ detail: 'AI suggestions are temporarily unavailable' }, { status: 503 })))
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(await screen.findByText('AI suggestions are unavailable right now.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+  })
+
+  it('clears previous suggestions when regeneration fails', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    let requestCount = 0
+    let releaseRetry: (() => void) | undefined
+    server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
+      requestCount += 1
+      if (requestCount === 1) {
+        return HttpResponse.json({ summary: 'Old generated summary', suggested_priority: 'high', recommended_action: 'Old recommended action' })
+      }
+      await new Promise<void>((resolve) => { releaseRetry = resolve })
+      return HttpResponse.json({ detail: 'AI suggestions are temporarily unavailable' }, { status: 503 })
+    }))
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(await screen.findByText('Old generated summary')).toBeVisible()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(screen.queryByText('Old generated summary')).not.toBeInTheDocument()
+    expect(screen.queryByText('Old recommended action')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Generating/ })).toBeDisabled()
+
+    releaseRetry?.()
+    expect(await screen.findByText('AI suggestions are unavailable right now.')).toBeVisible()
+    expect(screen.queryByText('Old generated summary')).not.toBeInTheDocument()
+    expect(screen.queryByText('Old recommended action')).not.toBeInTheDocument()
+  })
+
+  it('does not automatically update ticket priority', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    const patchSpy = vi.fn()
+    server.use(
+      http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.json({ summary: 'Generated summary', suggested_priority: 'high', recommended_action: 'Action' })),
+      http.patch(`${API_URL}/service-requests/1`, () => { patchSpy(); return HttpResponse.json({}) }),
+    )
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(await screen.findByText('Generated summary')).toBeVisible()
+    expect(patchSpy).not.toHaveBeenCalled()
+  })
+
+  it('ignores a completed suggestion request after switching tickets', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    let releaseFirst: (() => void) | undefined
+    server.use(
+      http.get(`${API_URL}/service-requests`, () => HttpResponse.json([
+        { id: 1, title: 'Printer offline', description: 'Cannot connect', status: 'open', priority: 'medium', customer_id: 1, assigned_agent_id: null, assigned_agent_email: null, created_by_user_id: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 2, title: 'VPN unavailable', description: 'Cannot sign in', status: 'open', priority: 'high', customer_id: 1, assigned_agent_id: null, assigned_agent_email: null, created_by_user_id: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ])),
+      http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
+        await new Promise<void>((resolve) => { releaseFirst = resolve })
+        return HttpResponse.json({ summary: 'Printer-only result', suggested_priority: 'low', recommended_action: 'Restart printer' })
+      }),
+    )
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await userEvent.click(screen.getByRole('button', { name: 'VPN unavailable' }))
+
+    releaseFirst?.()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Generate suggestions' })).toBeEnabled())
+    expect(screen.getByRole('heading', { name: 'VPN unavailable' })).toBeVisible()
+    expect(screen.queryByText('Printer-only result')).not.toBeInTheDocument()
+  })
+})

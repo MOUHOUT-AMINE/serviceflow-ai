@@ -31,6 +31,10 @@ services:
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AI_PROVIDER: ${AI_PROVIDER:-disabled}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-5-mini}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-15}
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
     ports:
       - "${BACKEND_PORT:-8000}:8000"
