@@ -93,6 +93,29 @@ it is not an automatic upgrade step. To preserve local data, change the role's
 password inside PostgreSQL before updating `.env` (or back up the data first),
 then restart the stack with `docker compose up --build`.
 
+### Service-request enum contract and deployment
+
+API query filters, JSON requests/responses, and database values use priorities
+`low`, `medium`, `high` and statuses `open`, `in_progress`, `resolved`, `closed`.
+French labels are presentation only, defined in
+`frontend/src/features/requestLabels.ts`; never translate option values or backend enums.
+
+If a deployed API returns 422 expecting `faible`, `moyenne`, or `élevée`, it is
+running a different enum contract from this checkout. Rebuild and redeploy the
+backend as well as the frontend. For a Compose deployment, run from the updated checkout:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+Verify the deployed `/openapi.json` schemas `ServiceRequestPriority` and
+`ServiceRequestStatus` contain the exact values above. With an authenticated user,
+check GET `/service-requests?priority=low`, then creation and PATCH updates using
+each priority and status. The committed database migration already uses these
+values. If production database constraints or stored rows were separately
+translated, inspect that schema and data before preparing a corrective migration;
+rebuilding containers alone will not change those rows or constraints.
+
 ## Run services individually
 
 Start the development PostgreSQL service from the repository root:

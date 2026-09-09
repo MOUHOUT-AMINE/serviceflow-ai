@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+# Public API and persisted values: keep stable; translate only in UI labels.
 class ServiceRequestStatus(str, Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"

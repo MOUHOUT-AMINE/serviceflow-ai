@@ -49,6 +49,41 @@ describe('authentication and routing', () => {
 })
 
 describe('role workflows', () => {
+  it('uses stable enum values when filtering and creating with French labels', async () => {
+    sessionStorage.setItem('serviceflow_access_token', 'admin-token')
+    const queries: URLSearchParams[] = []
+    let created: unknown
+    server.use(
+      http.get(`${API_URL}/service-requests`, ({ request }) => {
+        queries.push(new URL(request.url).searchParams)
+        return HttpResponse.json([])
+      }),
+      http.post(`${API_URL}/service-requests`, async ({ request }) => {
+        created = await request.json()
+        return HttpResponse.json({ id: 1 }, { status: 201 })
+      }),
+    )
+    renderApp(<TestRoutes />, '/service-requests')
+    await screen.findByRole('heading', { name: 'Service requests' })
+    for (const [label, value] of [['faible', 'low'], ['moyenne', 'medium'], ['élevée', 'high']]) {
+      await userEvent.selectOptions(screen.getByLabelText('Priority'), screen.getByRole('option', { name: label }))
+      await waitFor(() => expect(queries.some((query) => query.get('priority') === value)).toBe(true))
+    }
+    for (const [label, value] of [['ouvert', 'open'], ['en cours', 'in_progress'], ['résolu', 'resolved'], ['fermé', 'closed']]) {
+      await userEvent.selectOptions(screen.getByLabelText('Status'), screen.getByRole('option', { name: label }))
+      await waitFor(() => expect(queries.some((query) => query.get('status') === value)).toBe(true))
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'New request' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await userEvent.type(dialog.getByLabelText('Title'), 'Printer offline')
+    await userEvent.type(dialog.getByLabelText('Description'), 'Cannot connect')
+    await userEvent.selectOptions(dialog.getByLabelText('Customer'), '1')
+    await userEvent.selectOptions(dialog.getByLabelText('Priority'), dialog.getByRole('option', { name: 'élevée' }))
+    await userEvent.selectOptions(dialog.getByLabelText('Status'), dialog.getByRole('option', { name: 'en cours' }))
+    await userEvent.click(dialog.getByRole('button', { name: 'Save request' }))
+    await waitFor(() => expect(created).toMatchObject({ priority: 'high', status: 'in_progress' }))
+  })
+
   it('prevents an administrator from changing their own role', async () => {
     sessionStorage.setItem('serviceflow_access_token', 'admin-token')
     renderApp(<TestRoutes />, '/users')
@@ -92,9 +127,10 @@ describe('role workflows', () => {
     expect(usersSpy).not.toHaveBeenCalled()
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
     const dialog = screen.getByRole('dialog')
-    await userEvent.selectOptions(within(dialog).getByLabelText('Status'), 'resolved')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Status'), within(dialog).getByRole('option', { name: 'résolu' }))
+    await userEvent.selectOptions(within(dialog).getByLabelText('Priority'), within(dialog).getByRole('option', { name: 'faible' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save request' }))
-    await waitFor(() => expect(updated).toMatchObject({ status: 'resolved' }))
+    await waitFor(() => expect(updated).toMatchObject({ status: 'resolved', priority: 'low' }))
   })
 })
 
@@ -114,7 +150,7 @@ describe('AI ticket suggestions', () => {
     expect(await screen.findByText('The printer is unreachable.')).toBeVisible()
     expect(screen.getByText('Check power and network connectivity.')).toBeVisible()
     expect(screen.getByText('AI-generated · Review before applying')).toBeVisible()
-    expect(within(screen.getByRole('dialog')).getByText('High')).toBeVisible()
+    expect(within(screen.getByRole('dialog')).getByText('élevée')).toBeVisible()
   })
 
   it('shows a small fallback when AI is unavailable', async () => {

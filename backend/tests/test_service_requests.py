@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import NO_VALUE
@@ -20,6 +20,44 @@ from app.service_requests.repository import ServiceRequestRepository
 
 
 client = TestClient(app)
+
+
+def test_openapi_enum_contract() -> None:
+    schemas = client.get('/openapi.json').json()['components']['schemas']
+    assert schemas['ServiceRequestPriority']['enum'] == ['low', 'medium', 'high']
+    assert schemas['ServiceRequestStatus']['enum'] == [
+        'open', 'in_progress', 'resolved', 'closed'
+    ]
+
+
+@pytest.mark.parametrize('field,values', [
+    ('priority', ['low', 'medium', 'high']),
+    ('status', ['open', 'in_progress', 'resolved', 'closed']),
+])
+def test_enum_round_trip(field: str, values: list[str], db_session: Session) -> None:
+    user = create_user(db_session, 'contract@example.com')
+    customer = create_customer(db_session)
+    headers = headers_for(user)
+    for value in values:
+        created = client.post('/service-requests', headers=headers,
+                              json=request_payload(customer.id, **{field: value}))
+        assert created.status_code == 201
+        assert created.json()[field] == value
+        request_id = created.json()['id']
+        for updated_value in values:
+            updated = client.patch(f'/service-requests/{request_id}', headers=headers,
+                                   json={field: updated_value})
+            assert updated.status_code == 200
+            assert updated.json()[field] == updated_value
+            filtered = client.get('/service-requests', headers=headers,
+                                  params={field: updated_value})
+            assert filtered.status_code == 200
+            assert request_id in [item['id'] for item in filtered.json()]
+            assert all(item[field] == updated_value for item in filtered.json())
+            stored = db_session.execute(text(
+                'SELECT priority, status FROM service_requests WHERE id = :id'
+            ), {'id': request_id}).mappings().one()
+            assert stored[field] == updated_value
 
 
 def create_user(
