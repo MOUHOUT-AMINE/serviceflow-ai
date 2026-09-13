@@ -140,7 +140,7 @@ describe('AI ticket suggestions', () => {
     let release: (() => void) | undefined
     server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
       await new Promise<void>((resolve) => { release = resolve })
-      return HttpResponse.json({ summary: 'The printer is unreachable.', suggested_priority: 'high', recommended_action: 'Check power and network connectivity.' })
+      return HttpResponse.json({ summary: 'The printer is unreachable.', suggested_priority: 'high', suggested_customer_reply: 'Bonjour, nous allons examiner votre demande.', recommended_action: 'Check power and network connectivity.' })
     }))
     renderApp(<TestRoutes />, '/service-requests')
     await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
@@ -149,6 +149,7 @@ describe('AI ticket suggestions', () => {
     release?.()
     expect(await screen.findByText('The printer is unreachable.')).toBeVisible()
     expect(screen.getByText('Check power and network connectivity.')).toBeVisible()
+    expect(screen.getByText('Bonjour, nous allons examiner votre demande.')).toBeVisible()
     expect(screen.getByText('AI-generated · Review before applying')).toBeVisible()
     expect(within(screen.getByRole('dialog')).getByText('élevée')).toBeVisible()
   })
@@ -170,7 +171,7 @@ describe('AI ticket suggestions', () => {
     server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
       requestCount += 1
       if (requestCount === 1) {
-        return HttpResponse.json({ summary: 'Old generated summary', suggested_priority: 'high', recommended_action: 'Old recommended action' })
+        return HttpResponse.json({ summary: 'Old generated summary', suggested_priority: 'high', suggested_customer_reply: 'Bonjour, nous allons examiner votre demande.', recommended_action: 'Old recommended action' })
       }
       await new Promise<void>((resolve) => { releaseRetry = resolve })
       return HttpResponse.json({ detail: 'AI suggestions are temporarily unavailable' }, { status: 503 })
@@ -195,7 +196,7 @@ describe('AI ticket suggestions', () => {
     sessionStorage.setItem('serviceflow_access_token', 'admin-token')
     const patchSpy = vi.fn()
     server.use(
-      http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.json({ summary: 'Generated summary', suggested_priority: 'high', recommended_action: 'Action' })),
+      http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.json({ summary: 'Generated summary', suggested_priority: 'high', suggested_customer_reply: 'Bonjour, nous allons examiner votre demande.', recommended_action: 'Action' })),
       http.patch(`${API_URL}/service-requests/1`, () => { patchSpy(); return HttpResponse.json({}) }),
     )
     renderApp(<TestRoutes />, '/service-requests')
@@ -215,7 +216,7 @@ describe('AI ticket suggestions', () => {
       ])),
       http.post(`${API_URL}/service-requests/1/ai-suggestions`, async () => {
         await new Promise<void>((resolve) => { releaseFirst = resolve })
-        return HttpResponse.json({ summary: 'Printer-only result', suggested_priority: 'low', recommended_action: 'Restart printer' })
+        return HttpResponse.json({ summary: 'Printer-only result', suggested_priority: 'low', suggested_customer_reply: 'Bonjour, nous allons examiner votre demande.', recommended_action: 'Restart printer' })
       }),
     )
     renderApp(<TestRoutes />, '/service-requests')
@@ -228,5 +229,94 @@ describe('AI ticket suggestions', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Generate suggestions' })).toBeEnabled())
     expect(screen.getByRole('heading', { name: 'VPN unavailable' })).toBeVisible()
     expect(screen.queryByText('Printer-only result')).not.toBeInTheDocument()
+  })
+})
+
+describe('AI suggestion actions', () => {
+  const reply = 'Bonjour, nous allons examiner votre demande.'
+  const ticket = { id: 1, title: 'Printer offline', description: 'Cannot connect', status: 'open', priority: 'medium', customer_id: 1, assigned_agent_id: null, assigned_agent_email: null, created_by_user_id: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+  async function openSuggestions(role = 'admin') {
+    sessionStorage.setItem('serviceflow_access_token', `${role}-token`)
+    if (role === 'agent') server.use(http.get(`${API_URL}/auth/me`, () => HttpResponse.json(agent)))
+    server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.json({ summary: 'Summary', suggested_priority: 'high', recommended_action: 'Action', suggested_customer_reply: reply })))
+    renderApp(<TestRoutes />, '/service-requests')
+    await userEvent.click(await screen.findByRole('button', { name: 'Printer offline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    await screen.findByText(reply)
+  }
+
+  it.each(['admin', 'agent'])('applies priority only on explicit click as %s and refreshes details and list', async (role) => {
+    let current = { ...ticket }
+    let release: (() => void) | undefined
+    const patch = vi.fn()
+    server.use(
+      http.get(`${API_URL}/service-requests`, () => HttpResponse.json([current])),
+      http.patch(`${API_URL}/service-requests/1`, async ({ request }) => {
+        patch(await request.json(), request.headers.get('Authorization'))
+        await new Promise<void>((resolve) => { release = resolve })
+        current = { ...current, priority: 'high' }
+        return HttpResponse.json(current)
+      }),
+    )
+    await openSuggestions(role)
+    expect(patch).not.toHaveBeenCalled()
+    expect(within(screen.getByRole('dialog')).getByText('moyenne')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer la priorité' }))
+    await waitFor(() => expect(patch).toHaveBeenCalledExactlyOnceWith({ priority: 'high' }, `Bearer ${role}-token`))
+    expect(screen.getByRole('button', { name: 'Application…' })).toBeDisabled()
+    release?.()
+    expect(await screen.findByText('Priorité appliquée')).toBeVisible()
+    expect(within(screen.getByRole('dialog')).queryByText('moyenne')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Appliquer la priorité' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(await within(screen.getByRole('table')).findByText('élevée')).toBeVisible()
+  })
+
+  it('preserves priority after update failure and allows retry', async () => {
+    let fail = true
+    server.use(http.patch(`${API_URL}/service-requests/1`, () => fail ? HttpResponse.json({ detail: 'Forbidden' }, { status: 403 }) : HttpResponse.json({ ...ticket, priority: 'high' })))
+    await openSuggestions()
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer la priorité' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de modifier la priorité')
+    expect(within(screen.getByRole('dialog')).getByText('moyenne')).toBeVisible()
+    fail = false
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer la priorité' }))
+    expect(await screen.findByText('Priorité appliquée')).toBeVisible()
+  })
+
+  it('copies only the customer reply and resets feedback on regeneration', async () => {
+    const user = userEvent.setup()
+    const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    try {
+      await openSuggestions()
+      await user.click(screen.getByRole('button', { name: 'Copier la réponse' }))
+      expect(copy).toHaveBeenCalledExactlyOnceWith(reply)
+      expect(await screen.findByText('Réponse copiée')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+      await screen.findByText(reply)
+      expect(screen.queryByText('Réponse copiée')).not.toBeInTheDocument()
+    } finally { copy.mockRestore() }
+  })
+
+  it.each(['rejected', 'unavailable'])('handles %s clipboard gracefully', async (failure) => {
+    const user = userEvent.setup()
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: failure === 'unavailable' ? undefined : { writeText: vi.fn().mockRejectedValue(new Error('Denied')) } })
+    try {
+      await openSuggestions()
+      await user.click(screen.getByRole('button', { name: 'Copier la réponse' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de copier la réponse')
+      expect(screen.getByText(reply)).toBeVisible()
+      expect(screen.queryByText('Réponse copiée')).not.toBeInTheDocument()
+    } finally { if (original) Object.defineProperty(navigator, 'clipboard', original) }
+  })
+
+  it('shows a retryable error for other generation failures', async () => {
+    await openSuggestions()
+    server.use(http.post(`${API_URL}/service-requests/1/ai-suggestions`, () => HttpResponse.error()))
+    await userEvent.click(screen.getByRole('button', { name: 'Generate suggestions' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de générer les suggestions')
+    expect(screen.queryByText(reply)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate suggestions' })).toBeEnabled()
   })
 })

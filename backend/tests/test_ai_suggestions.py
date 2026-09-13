@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -69,6 +71,7 @@ def test_ai_suggestions_success_uses_database_ticket(db_session: Session) -> Non
         summary="Remote access is unavailable after an update.",
         suggested_priority="high",
         recommended_action="Check the VPN gateway and roll back the update.",
+        suggested_customer_reply="Bonjour, nous allons examiner votre problème de connexion VPN.",
     )
     fake = FakeAssistant(expected)
     app.dependency_overrides[get_ticket_assistant] = lambda: fake
@@ -84,6 +87,38 @@ def test_ai_suggestions_success_uses_database_ticket(db_session: Session) -> Non
     assert response.status_code == 200
     assert response.json() == expected.model_dump()
     assert fake.calls == [("VPN unavailable", "Remote staff cannot connect after the update.")]
+    db_session.expire_all()
+    assert ServiceRequestRepository(db_session).get(request_id).priority.value == "medium"
+
+
+def test_provider_reply_schema_and_prompt(monkeypatch) -> None:
+    expected = dict(summary="VPN issue", suggested_priority="high",
+                    recommended_action="Check VPN", suggested_customer_reply="Bonjour, nous allons examiner votre demande.")
+
+    def post(*args, **kwargs):
+        payload = kwargs["json"]
+        schema = payload["text"]["format"]["schema"]
+        assert "suggested_customer_reply" in schema["required"]
+        assert schema["properties"]["suggested_customer_reply"] == {"type": "string"}
+        assert "French" in payload["instructions"]
+        assert "professionally and concisely" in payload["instructions"]
+        return FakeProviderResponse({"output": [{"content": [{"type": "output_text", "text": json.dumps(expected)}]}]})
+
+    monkeypatch.setattr("app.ai.provider.httpx.post", post)
+    assistant = OpenAITicketAssistant(api_key="test-key", model="test-model", timeout_seconds=1)
+    assert assistant.suggest(title="VPN", description="Unavailable").model_dump() == expected
+    assert "suggested_customer_reply" in app.openapi()["components"]["schemas"]["TicketSuggestions"]["required"]
+
+
+@pytest.mark.parametrize("reply", [None, "", "   ", 42])
+def test_provider_rejects_missing_or_invalid_reply(monkeypatch, reply) -> None:
+    result = dict(summary="VPN issue", suggested_priority="high", recommended_action="Check VPN")
+    if reply is not None:
+        result["suggested_customer_reply"] = reply
+    monkeypatch.setattr("app.ai.provider.httpx.post", lambda *args, **kwargs: FakeProviderResponse({"output_text": json.dumps(result)}))
+    assistant = OpenAITicketAssistant(api_key="test-key", model="test-model", timeout_seconds=1)
+    with pytest.raises(TicketAssistantError):
+        assistant.suggest(title="VPN", description="Unavailable")
 
 
 def test_ai_suggestions_disabled(db_session: Session, monkeypatch) -> None:

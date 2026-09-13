@@ -31,6 +31,7 @@ export interface TicketSuggestions {
   summary: string
   suggested_priority: RequestPriority
   recommended_action: string
+  suggested_customer_reply: string
 }
 
 export interface DashboardCounts {

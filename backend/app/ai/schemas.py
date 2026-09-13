@@ -10,3 +10,4 @@ class TicketSuggestions(BaseModel):
     summary: SuggestionText
     suggested_priority: Literal["low", "medium", "high"]
     recommended_action: SuggestionText
+    suggested_customer_reply: SuggestionText
