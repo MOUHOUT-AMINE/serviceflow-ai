@@ -1,157 +1,147 @@
-# ServiceFlow AI
+﻿# ServiceFlow AI
 
-ServiceFlow AI is a professional full-stack portfolio project for managing customers and their service requests. The project will demonstrate practical API design, relational data modeling, frontend development, automated testing, containerization, and continuous integration.
+ServiceFlow AI is a full-stack customer service application built with React, TypeScript, FastAPI, and PostgreSQL. It brings customer records, service requests, agent assignments, and workload reporting into one interface, with an optional AI assistant to support ticket triage and draft customer replies.
 
-## Planned stack
+The project demonstrates end-to-end software engineering: a typed frontend, a REST API with role-based access control, relational data modelling, database migrations, automated tests, and containerised local deployment.
 
-- Python and FastAPI
-- PostgreSQL
-- React and TypeScript
-- Docker and Docker Compose
-- Pytest
-- GitHub Actions
+## Live demo
 
-## MVP scope
+| Service | Production URL |
+| --- | --- |
+| Frontend | Pending confirmation |
+| Backend / API | Pending confirmation |
+| API health endpoint | Pending backend URL confirmation; path: `/health` |
 
-The first release will support authentication for administrators and agents, customer management, service-request management, agent assignment, request priorities and statuses, search and filtering, and a small operational dashboard.
+Production addresses are not recorded in this repository. These entries must be updated with the confirmed deployment URLs. No passwords or private demo credentials are published here.
 
-Advanced permissions, notifications, attachments, and real-time updates are intentionally outside the initial scope.
+The API exposes an unauthenticated `GET /health` endpoint returning `{"status":"ok"}`. This is an application liveness check; it does not check database connectivity or AI provider availability. Interactive API documentation is available at `/docs`, with the OpenAPI schema at `/openapi.json`.
 
-## Development roadmap
+## Key features
 
-1. Establish the backend, frontend, database, and container foundations.
-2. Build and test customer management.
-3. Build and test the service-request workflow.
-4. Add authentication and role-based access.
-5. Connect the React interface to the API.
-6. Add dashboard summaries, filtering, seed data, and CI checks.
-7. Polish documentation and the demonstration environment.
+- **JWT authentication:** email/password login with expiring JWT bearer tokens and Argon2 password hashing. Inactive accounts cannot authenticate or continue using existing tokens.
+- **Admin / Agent role-based access:** backend-enforced permissions restrict user management, ticket assignment, and record deletion to administrators. Agents can create, view, and edit customers and tickets and access their own workload dashboard.
+- **Customer management:** create, view, and edit customer names and email addresses; administrators can delete records.
+- **Service request management:** create, view, and edit tickets linked to customers, with creator and update metadata available through the API. Administrators can delete tickets.
+- **Agent assignment:** administrators can assign tickets to active agents, reassign them, or remove an assignment.
+- **Status and priority workflows:** update ticket statuses (`open`, `in_progress`, `resolved`, `closed`) and priorities (`low`, `medium`, `high`) as work progresses.
+- **Search and filtering:** API filters for customer, assignee, status, and priority, plus frontend search across the titles and descriptions of loaded results.
+- **Operational dashboards:** administrators see customer and request totals, status and priority breakdowns, unassigned requests, and workload by assignee. Agents see a summary of their own assigned work.
+- **User administration:** administrators can create users, change roles, and activate or deactivate accounts, with safeguards against deactivating or demoting their own account.
+- **AI Ticket Assistant:** optionally generate a summary, suggested priority, and recommended action from a stored ticket's title and description. AI is disabled by default, and the core application works without an API key.
+- **Suggested customer reply:** review an AI-generated draft and copy it to the clipboard. The application does not send the reply.
+- **Human-in-the-loop priority updates:** generating suggestions leaves the ticket unchanged. A user must explicitly select **Apply suggested priority** to save the recommended priority to the ticket.
 
-## Run the full application with Docker
+Ticket statuses are `open`, `in_progress`, `resolved`, and `closed`; priorities are `low`, `medium`, and `high`. These values are shared by the API and database. Some interface labels and the ticket detail view are currently in French; other screens use English.
 
-Copy `.env.example` to `.env` and replace `POSTGRES_PASSWORD`,
-`JWT_SECRET_KEY`, and `BOOTSTRAP_ADMIN_PASSWORD` with local values. Then run:
+## Technology and architecture
 
-```sh
-docker compose up --build
+| Layer | Implementation |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, React Router |
+| Data fetching and forms | TanStack Query, React Hook Form, Zod |
+| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy 2, Psycopg |
+| Database | PostgreSQL 16, Alembic migrations |
+| Authentication | PyJWT, pwdlib with Argon2 |
+| AI integration | Optional OpenAI provider accessed from the backend via HTTPX |
+| Deployment | Docker Compose; static frontend served by Nginx |
+| Quality checks | Pytest, Vitest, React Testing Library, MSW, GitHub Actions |
+
+In the Compose setup, the browser accesses the Nginx frontend, which proxies `/api` requests to FastAPI. The backend accesses PostgreSQL through SQLAlchemy. Route handlers, validation schemas, database models, and repositories are organised by feature. The AI assistant uses a provider interface with a disabled implementation so the core application can run without an API key.
+
+```text
+frontend/src/
+  api/                API client and endpoint functions
+  auth/               Authentication state and route guards
+  pages/              Dashboard, customers, requests, and users
+  components/         Shared layout and interface components
+  test/               Frontend tests and mock API setup
+backend/
+  app/
+    auth/             Login, token verification, and admin bootstrap
+    customers/        Customer API, schemas, models, and repository
+    service_requests/ Ticket API, schemas, models, and repository
+    dashboard/        Role-specific reporting
+    users/            Administrator-only user management
+    ai/               Optional ticket assistant and provider integration
+  alembic/            Versioned database migrations
+  tests/              API, database, authentication, and AI tests
+.github/workflows/    Continuous integration
+compose.yaml          Application and isolated test database services
 ```
 
-The backend builds its PostgreSQL URL from the separate `POSTGRES_*` settings,
-so `POSTGRES_PASSWORD` may contain URL-reserved characters such as `@`, `:`,
-`/`, `?`, `#`, and `%`. When the backend runs on the host it connects to
-`DATABASE_HOST=localhost`; Compose overrides that host to the `postgres` service.
-`DATABASE_URL` remains available as an optional full override, but credentials in
-that value must already be percent-encoded.
+## Run locally
 
-Open the frontend at http://localhost:5173. The API and its interactive docs are
-also exposed at http://localhost:8000 and http://localhost:8000/docs.
+### Docker Compose
 
-### Optional AI ticket assistant
+Prerequisites: Docker with the Compose plugin.
 
-AI suggestions are disabled by default, and no API key is required to start or
-use ServiceFlow. To enable the OpenAI provider, set `AI_PROVIDER=openai`,
-`AI_API_KEY`, and `AI_MODEL`; `AI_TIMEOUT_SECONDS` controls the provider request
-timeout (15 seconds by default). Compose passes these settings only to the
-backend. The API key is never included in frontend configuration or responses.
+1. Copy `.env.example` to `.env` in the repository root.
+2. Set your own `POSTGRES_PASSWORD`, a random `JWT_SECRET_KEY` of at least 32 characters, and your local `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`.
+3. Build and start the application:
 
-Authenticated users can generate a non-persistent summary, suggested priority,
-and recommended action from a ticket's stored title and description. Suggestions
-are always presented for review and never change the ticket automatically. When
-AI is disabled, misconfigured, or temporarily unavailable, the rest of the
-ticket workflow remains operational.
+   ```sh
+   docker compose up --build -d
+   ```
 
-The backend waits for PostgreSQL to become healthy, then runs `alembic upgrade
-head` before starting Uvicorn. Consequently, all committed database migrations
-are applied automatically on every container start. To create the initial admin
-after startup, run:
+4. Once the backend is running, create the initial administrator:
+
+   ```sh
+   docker compose exec backend python -m app.auth.bootstrap
+   ```
+
+5. Open the frontend and sign in with the local administrator account you configured.
+
+| Local service | Default address |
+| --- | --- |
+| Frontend | http://localhost:5173 |
+| API base | http://localhost:8000 |
+| API documentation | http://localhost:8000/docs |
+| API health | http://localhost:8000/health |
+
+Compose waits for PostgreSQL health and runs `alembic upgrade head` before starting the API. Database data persists in the `postgres_data` volume. Changing `POSTGRES_PASSWORD` in `.env` does not update the password of an already initialised database.
+
+The bootstrap command can be rerun. For an existing account with the configured email, it ensures that the account is active and has the administrator role.
+
+### Frontend development server
+
+With the backend running, use Node.js 22 and run:
 
 ```sh
-docker compose exec backend python -m app.auth.bootstrap
+cd frontend
+npm ci
 ```
 
-The frontend is built as static assets and served by Nginx. Requests under
-`/api` are proxied over the private Compose network to the backend, avoiding a
-browser-visible container hostname.
+Copy `frontend/.env.example` to `frontend/.env` to use the local API at `http://localhost:8000`, then run `npm run dev`. Stop the Compose frontend first if it occupies port 5173. The backend's default CORS origin is `http://localhost:5173`.
 
-### Changing the local PostgreSQL password
+### Optional AI configuration
 
-PostgreSQL uses `POSTGRES_PASSWORD` only when it initializes a new data
-directory. Changing the value in `.env` does **not** change the password stored
-in an existing `postgres_data` volume, and the backend will fail authentication
-until the stored password and `.env` agree.
+AI is disabled by default. To enable it, configure `AI_PROVIDER=openai`, `AI_API_KEY`, and `AI_MODEL` in the root `.env`, then recreate the backend with `docker compose up -d backend`. `AI_TIMEOUT_SECONDS` defaults to 15 seconds.
 
-For disposable local development data, stop the stack and recreate its volumes:
+When enabled, the backend sends the selected ticket's title and description to the provider. The API key remains in backend configuration. Provider responses are validated against a structured schema; disabled, invalid, or unavailable AI responses produce an error state while the rest of the ticket workflow remains usable. Suggestions are returned without being persisted.
 
-```sh
-docker compose down -v
-docker compose up --build
-```
+## Testing and continuous integration
 
-`docker compose down -v` permanently deletes the local PostgreSQL volume and all
-data in it. Use this reset only when that development data is safe to discard;
-it is not an automatic upgrade step. To preserve local data, change the role's
-password inside PostgreSQL before updating `.env` (or back up the data first),
-then restart the stack with `docker compose up --build`.
+The [GitHub Actions workflow](.github/workflows/ci.yml) runs on pushes and pull requests. It applies migrations to PostgreSQL and runs backend tests, then separately runs frontend type checking, tests, and a production build.
 
-### Service-request enum contract and deployment
+Backend tests cover authentication, permissions, customer and ticket operations, assignment rules, filtering, dashboard aggregation, migration round trips, and AI success and failure handling. Frontend tests use React Testing Library and MSW to exercise the interface against mocked API responses.
 
-API query filters, JSON requests/responses, and database values use priorities
-`low`, `medium`, `high` and statuses `open`, `in_progress`, `resolved`, `closed`.
-French labels are presentation only, defined in
-`frontend/src/features/requestLabels.ts`; never translate option values or backend enums.
-
-If a deployed API returns 422 expecting `faible`, `moyenne`, or `élevée`, it is
-running a different enum contract from this checkout. Rebuild and redeploy the
-backend as well as the frontend. For a Compose deployment, run from the updated checkout:
+To run backend tests locally, use Python 3.12 with a virtual environment and start the isolated test database from the repository root:
 
 ```sh
-docker compose up -d --build backend frontend
-```
-
-Verify the deployed `/openapi.json` schemas `ServiceRequestPriority` and
-`ServiceRequestStatus` contain the exact values above. With an authenticated user,
-check GET `/service-requests?priority=low`, then creation and PATCH updates using
-each priority and status. The committed database migration already uses these
-values. If production database constraints or stored rows were separately
-translated, inspect that schema and data before preparing a corrective migration;
-rebuilding containers alone will not change those rows or constraints.
-
-## Run services individually
-
-Start the development PostgreSQL service from the repository root:
-
-```sh
-docker compose up -d postgres
-```
-
-Install backend dependencies and apply migrations from `backend`:
-
-```sh
-python -m pip install -r requirements.txt
-alembic upgrade head
-```
-
-Configure `JWT_SECRET_KEY`, then create the first administrator after migrating:
-
-```sh
-python -m app.auth.bootstrap
-```
-
-The command reads `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` and is
-safe to rerun when that email already exists. Log in through `POST /auth/login`
-using OAuth2 form fields `username` (the email address) and `password`, then send
-the returned token as `Authorization: Bearer <token>`.
-
-Create a migration after changing SQLAlchemy models with:
-
-```sh
-alembic revision --autogenerate -m "describe change"
-```
-
-Run backend tests against the isolated, temporary PostgreSQL service:
-
-```sh
-docker compose --profile test up -d postgres-test
+docker compose --profile test up -d --wait postgres-test
 cd backend
-pytest
+python -m pip install -r requirements.txt
+python -m pytest
+```
+
+The default test configuration targets the Compose test database on port 5433. If you customise its connection settings, set `TEST_DATABASE_URL` accordingly in your shell. The test suite requires a database name ending in `_test` and clears its application tables between tests.
+
+To run frontend checks:
+
+```sh
+cd frontend
+npm ci
+npm run typecheck
+npm test
+npm run build
 ```
